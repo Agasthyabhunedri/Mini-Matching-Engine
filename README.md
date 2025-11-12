@@ -1,74 +1,69 @@
-# Mini Matching Engine (C++20, Lock-Free, Low-Latency)
+# Mini Matching Engine
 
+**Tech:** C++20 · Lock-Free · Multithreading  
+**Goal:** Low-latency, in-memory matching engine simulating exchange-style price-time priority with asynchronous event handling.
 
-A lightweight, **low-latency order-matching backend** that simulates core exchange behavior with **in-memory order books**, **asynchronous event handling**, and a **lock-free SPSC ring buffer**. Designed to be simple, portable (no Boost), and technically credible for trading/HFT roles.
+---
 
+## Features
+- **In‑memory limit order book** (price‑time priority) per symbol
+- **Lock‑free MPMC rings** for ingest and trade outflow (bounded, power‑of‑two)
+- **Multi‑threaded workers** (configurable) processing order flow
+- **Synthetic benchmark** targeting **100K+ orders/sec** on commodity hardware
 
-## 🎯 Goal
-- Deterministic, price–time priority matching
-- Minimal allocations in the hot path
-- Single-threaded matcher for predictable book state
-- Lock-free ingestion path from producers to matcher
-- Demonstrate **100K+ orders/sec** on a modern desktop CPU
+> This is a compact educational/portfolio engine — optimized data structures & concurrency without external deps.
 
+---
 
-## 🧱 Architecture
-- **Producers → (Lock-free SPSC queue) → Matcher → Event Sink**
-- Per-symbol `OrderBook` with bid/ask maps and FIFO at each price level
-- Async-style event handling simulated via non-blocking publish/print
+## Build
 
-
-### Data Model
-- `Order { id, symbol, side, price, qty }`
-- `Trade { symbol, price, qty, buy_id, sell_id }`
-
-
-### Code Flow
-```text
-main.cpp
-└── Engine.start()
-└── matcher thread loop
-├─ pop order from LockFreeSPSC
-├─ locate OrderBook (by symbol)
-├─ OrderBook.add(order)
-│ ├─ cross against opposite side (best price first)
-│ ├─ emit trades (price–time priority)
-│ └─ enqueue remainder to same-side book
-└─ publish trades (stdout placeholder)
-```
-
-
-## 🚀 Build
+### Linux / macOS
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-
-## ▶️ Run (Demo)
-```bash
-./build/mini_match
+### Windows (MSVC)
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
 ```
-- Generates random BUY/SELL orders around price 100 for symbol `XYZ`
-- Prints matched trades in real-time
 
+---
 
-## 📈 Run (Benchmark)
+## Run
+
+### Benchmark
 ```bash
-./build/benchmark
+./build/mmx_bench
+# Output:
+# Orders submitted: 200000
+# Elapsed: 1.5 s
+# Throughput: 133333 orders/sec
+# Workers: 4
 ```
-- Sends 100,000 synthetic orders through the engine and prints throughput
-- Adjust `N` in `bench/benchmark.cpp` to stress further
 
-
-## 🧪 Tests
+### Basic Test
 ```bash
-ctest --test-dir build --output-on-failure
+./build/mmx_tests
 ```
-- `tests/sanity_tests.cpp` verifies price–time priority and crossing
 
+---
 
-## ⚙️ Configuration Tips
-- Queue size: constructor param in `Engine(queue_size)` (power-of-two recommended)
-- CPU pinning: add `pthread_setaffinity_np`/`sched_setaffinity` around `matcher_`
-- Logging: replace `std::cout` in the hot path with a non-blocking
+## Code Flow
+1. **Producer** submits `Order` events into a **lock‑free ring** (`LockFreeRing<T>`).
+2. **Worker threads** dequeue, call `OrderBook::match`, and enqueue `Trade` outputs.
+3. **OrderBook** maintains price‑time priority using `std::map<price, deque<Order>>`.
+4. **Bench driver** generates synthetic flow and prints throughput.
+
+---
+
+## Notes
+- Rings are **bounded MPMC** using sequence numbers (power‑of‑two capacity).
+- For clarity and portability, **no external dependencies** are used.
+- The queue is designed for **demo purposes**; production engines require more edge‑case handling.
+
+---
+
+## License
+MIT
